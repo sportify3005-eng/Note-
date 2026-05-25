@@ -90,6 +90,35 @@ jobs:
             sed -i 's/com.android.tools.build:gradle:[0-9.]\+/com.android.tools.build:gradle:8.9.1/g' build.gradle
           fi
 
+      - name: Ensure styles.xml with AppTheme Exists
+        run: |
+          mkdir -p app/src/main/res/values
+          if [ ! -f app/src/main/res/values/styles.xml ]; then
+            echo "styles.xml is missing, creating it with required AppTheme and AppTheme.NoActionBarLaunch..."
+            cat << 'EOF' > app/src/main/res/values/styles.xml
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
+        <!-- Customize your theme here. -->
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
+        <item name="android:background">@drawable/splash</item>
+    </style>
+</resources>
+EOF
+          else
+            echo "styles.xml already exists. Verifying AppTheme content..."
+            grep -q "AppTheme" app/src/main/res/values/styles.xml || echo "Warning: AppTheme might be missing!"
+            grep -q "AppTheme.NoActionBarLaunch" app/src/main/res/values/styles.xml || echo "Warning: AppTheme.NoActionBarLaunch might be missing!"
+          fi
+
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
 
