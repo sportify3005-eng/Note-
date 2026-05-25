@@ -2,74 +2,91 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches:
+      - main
+  workflow_dispatch:
 
-defaults:
-  run:
-    working-directory: ./android
+env:
+  ACTIONS_AUDIT_NOTICES: "false"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: .
+    defaults:
+      run:
+        working-directory: ./android
 
-      - name: Set up JDK 21
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        working-directory: ./
+        run: npm ci
+
+      - name: Build Web App
+        working-directory: ./
+        run: npm run build
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
+          cache: 'gradle'
+          cache-dependency-path: 'android/build.gradle'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Sync Capacitor
+        working-directory: ./
+        run: npx cap sync android
 
-      - name: Force Upgrade Gradle Wrapper to 8.11.1
+      - name: Setup Gradle Build Environment
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Explicitly Upgrade Gradle Wrapper
         run: gradle wrapper --gradle-version 8.11.1 --distribution-type all
 
-      - name: Inject AndroidX Configuration Flags
+      - name: Ensure AndroidX Support
         run: |
-          touch gradle.properties
-          echo "android.useAndroidX=true" >> gradle.properties
-          echo "android.enableJetifier=true" >> gradle.properties
-
-      - name: Dynamically Patch SDK and Plugin Versions to 36 / 8.9.1
-        run: |
-          echo "==> Upgrading Compile and Target SDK properties to 36..."
-          find . -name "build.gradle" -exec sed -i 's/compileSdk 35/compileSdk 36/g' {} +
-          find . -name "build.gradle" -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 36/g' {} +
-          find . -name "build.gradle" -exec sed -i 's/targetSdk 35/targetSdk 36/g' {} +
-          find . -name "build.gradle" -exec sed -i 's/targetSdkVersion 35/targetSdkVersion 36/g' {} +
-          
-          echo "==> Adjusting Android Gradle Plugin properties..."
-          find . -name "build.gradle" -exec sed -i 's/8.7.2/8.9.1/g' {} +
-          
-          if [ -f "gradle/libs.versions.toml" ]; then
-            echo "==> Version Catalog detected, updating TOML targets..."
-            sed -i 's/agp = "8.7.2"/agp = "8.9.1"/g' gradle/libs.versions.toml
-            sed -i 's/androidGradlePlugin = "8.7.2"/androidGradlePlugin = "8.9.1"/g' gradle/libs.versions.toml
+          if [ ! -f gradle.properties ]; then
+            echo "android.useAndroidX=true" > gradle.properties
+            echo "android.enableJetifier=true" >> gradle.properties
+          else
+            grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
+            grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
           fi
 
-      # FIXED STEP: Uses a completely flat, single-line echo command to prevent any YAML spacing alignment bugs
-      - name: Generate Missing App Themes and Resources
+      - name: Dynamically Configure SDK and AGP Versions
+        run: |
+          find . -name "variables.gradle" -exec sed -i 's/compileSdkVersion = [0-9]\+/compileSdkVersion = 36/g' {} +
+          find . -name "variables.gradle" -exec sed -i 's/targetSdkVersion = [0-9]\+/targetSdkVersion = 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/compileSdk [0-9]\+/compileSdk 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdk [0-9]\+/targetSdk 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/com.android.tools.build:gradle:[0-9.]\+/com.android.tools.build:gradle:8.9.1/g' {} +
+
+      - name: Ensure styles.xml via Single-line Printf Injection
         run: |
           mkdir -p app/src/main/res/values
-          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">\n        <item name="colorPrimary">#6200EE</item>\n        <item name="colorPrimaryDark">#3700B3</item>\n        <item name="colorAccent">#03DAC6</item>\n    </style>\n    <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.NoActionBar">\n        <item name="android:background">#FFFFFF</item>\n    </style>\n</resources>' > app/src/main/res/values/styles.xml
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar"></style>\n    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">\n        <item name="windowActionBar">false</item>\n        <item name="windowNoTitle">true</item>\n    </style>\n    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">\n        <item name="android:background">@drawable/splash</item>\n    </style>\n</resources>\n' > app/src/main/res/values/styles.xml
 
-      - name: Make Gradle executable
+      - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
 
-      - name: Build Debug APK
+      - name: Build APK
         run: ./gradlew assembleDebug
 
-      - name: Upload APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Note-Flow-Debug-APK
+          name: app-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
