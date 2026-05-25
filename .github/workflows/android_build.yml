@@ -53,11 +53,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Upgrade & Re-generate Gradle Wrapper
+      - name: Explicitly Upgrade Gradle Wrapper
         run: |
           gradle wrapper --gradle-version 8.9 --distribution-type all
 
-      - name: Configure android.useAndroidX in gradle.properties
+      - name: Ensure AndroidX Support
         run: |
           if [ ! -f gradle.properties ]; then
             echo "Creating gradle.properties..."
@@ -67,6 +67,27 @@ jobs:
             echo "gradle.properties already exists. Appending properties if missing..."
             grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
             grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
+          fi
+
+      - name: Dynamically Configure SDK and AGP Versions
+        run: |
+          echo "Updating build.gradle, app/build.gradle, and variables.gradle"
+          
+          # Force set to compileSdk and targetSdk versions to 36 in variables.gradle
+          if [ -f variables.gradle ]; then
+            sed -i 's/compileSdkVersion = [0-9]\+/compileSdkVersion = 36/g' variables.gradle
+            sed -i 's/targetSdkVersion = [0-9]\+/targetSdkVersion = 36/g' variables.gradle
+          fi
+
+          # Force set to compileSdk and targetSdk versions to 36 in app/build.gradle
+          if [ -f app/build.gradle ]; then
+            sed -i 's/compileSdk [0-9]\+/compileSdk 36/g' app/build.gradle
+            sed -i 's/targetSdk [0-9]\+/targetSdk 36/g' app/build.gradle
+          fi
+
+          # Bump Android Gradle Plugin to 8.9.1 in top level build.gradle
+          if [ -f build.gradle ]; then
+            sed -i 's/com.android.tools.build:gradle:[0-9.]\+/com.android.tools.build:gradle:8.9.1/g' build.gradle
           fi
 
       - name: Grant Execute Permission to Gradle Wrapper
