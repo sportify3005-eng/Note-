@@ -2,131 +2,74 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-env:
-  ACTIONS_AUDIT_NOTICES: "false"
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+defaults:
+  run:
+    working-directory: ./android
 
 jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    
-    defaults:
-      run:
-        working-directory: ./android
 
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          node-version: 24
+          sparse-checkout: .
 
-      - name: Install dependencies
-        working-directory: ./
-        run: npm ci
-
-      - name: Build Web App
-        working-directory: ./
-        run: npm run build
-
-      - name: Setup Java
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
-          cache: 'gradle'
-          cache-dependency-path: 'android/build.gradle'
 
-      - name: Sync Capacitor
-        working-directory: ./
-        run: npx cap sync android
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      - name: Setup Gradle Build Environment
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - name: Force Upgrade Gradle Wrapper to 8.11.1
+        run: gradle wrapper --gradle-version 8.11.1 --distribution-type all
 
-      - name: Explicitly Upgrade Gradle Wrapper
+      - name: Inject AndroidX Configuration Flags
         run: |
-          gradle wrapper --gradle-version 8.11.1 --distribution-type all
+          touch gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
 
-      - name: Ensure AndroidX Support
+      - name: Dynamically Patch SDK and Plugin Versions to 36 / 8.9.1
         run: |
-          if [ ! -f gradle.properties ]; then
-            echo "Creating gradle.properties..."
-            echo "android.useAndroidX=true" > gradle.properties
-            echo "android.enableJetifier=true" >> gradle.properties
-          else
-            echo "gradle.properties already exists. Appending properties if missing..."
-            grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
-            grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
-          fi
-
-      - name: Dynamically Configure SDK and AGP Versions
-        run: |
-          echo "Updating build.gradle, app/build.gradle, and variables.gradle"
+          echo "==> Upgrading Compile and Target SDK properties to 36..."
+          find . -name "build.gradle" -exec sed -i 's/compileSdk 35/compileSdk 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/compileSdkVersion 35/compileSdkVersion 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdk 35/targetSdk 36/g' {} +
+          find . -name "build.gradle" -exec sed -i 's/targetSdkVersion 35/targetSdkVersion 36/g' {} +
           
-          # Force set to compileSdk and targetSdk versions to 36 in variables.gradle
-          if [ -f variables.gradle ]; then
-            sed -i 's/compileSdkVersion = [0-9]\+/compileSdkVersion = 36/g' variables.gradle
-            sed -i 's/targetSdkVersion = [0-9]\+/targetSdkVersion = 36/g' variables.gradle
+          echo "==> Adjusting Android Gradle Plugin properties..."
+          find . -name "build.gradle" -exec sed -i 's/8.7.2/8.9.1/g' {} +
+          
+          if [ -f "gradle/libs.versions.toml" ]; then
+            echo "==> Version Catalog detected, updating TOML targets..."
+            sed -i 's/agp = "8.7.2"/agp = "8.9.1"/g' gradle/libs.versions.toml
+            sed -i 's/androidGradlePlugin = "8.7.2"/androidGradlePlugin = "8.9.1"/g' gradle/libs.versions.toml
           fi
 
-          # Force set to compileSdk and targetSdk versions to 36 in app/build.gradle
-          if [ -f app/build.gradle ]; then
-            sed -i 's/compileSdk [0-9]\+/compileSdk 36/g' app/build.gradle
-            sed -i 's/targetSdk [0-9]\+/targetSdk 36/g' app/build.gradle
-          fi
-
-          # Bump Android Gradle Plugin to 8.9.1 in top level build.gradle
-          if [ -f build.gradle ]; then
-            sed -i 's/com.android.tools.build:gradle:[0-9.]\+/com.android.tools.build:gradle:8.9.1/g' build.gradle
-          fi
-
-      - name: Ensure styles.xml with AppTheme Exists
+      # FIXED STEP: Uses a completely flat, single-line echo command to prevent any YAML spacing alignment bugs
+      - name: Generate Missing App Themes and Resources
         run: |
           mkdir -p app/src/main/res/values
-          if [ ! -f app/src/main/res/values/styles.xml ]; then
-            echo "styles.xml is missing, creating it with required AppTheme and AppTheme.NoActionBarLaunch..."
-            cat << 'EOF' > app/src/main/res/values/styles.xml
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Base application theme. -->
-    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
-        <!-- Customize your theme here. -->
-    </style>
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">\n        <item name="colorPrimary">#6200EE</item>\n        <item name="colorPrimaryDark">#3700B3</item>\n        <item name="colorAccent">#03DAC6</item>\n    </style>\n    <style name="AppTheme.NoActionBarLaunch" parent="Theme.AppCompat.NoActionBar">\n        <item name="android:background">#FFFFFF</item>\n    </style>\n</resources>' > app/src/main/res/values/styles.xml
 
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="windowActionBar">false</item>
-        <item name="windowNoTitle">true</item>
-    </style>
-
-    <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:background">@drawable/splash</item>
-    </style>
-</resources>
-EOF
-          else
-            echo "styles.xml already exists. Verifying AppTheme content..."
-            grep -q "AppTheme" app/src/main/res/values/styles.xml || echo "Warning: AppTheme might be missing!"
-            grep -q "AppTheme.NoActionBarLaunch" app/src/main/res/values/styles.xml || echo "Warning: AppTheme.NoActionBarLaunch might be missing!"
-          fi
-
-      - name: Grant Execute Permission to Gradle Wrapper
+      - name: Make Gradle executable
         run: chmod +x gradlew
 
-      - name: Build APK
+      - name: Build Debug APK
         run: ./gradlew assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
+          name: Note-Flow-Debug-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
