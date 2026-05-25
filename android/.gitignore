@@ -21,6 +21,7 @@ Thumbs.db
 
 # Whitelist Gradle wrapper jar and scripts
 !gradle/wrapper/gradle-wrapper.jar
+!gradle-wrapper.jar
 !gradlew
 !gradlew.bat
 

@@ -1,0 +1,70 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  ACTIONS_AUDIT_NOTICES: "false"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./android
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        working-directory: ./
+        run: npm ci
+
+      - name: Build Web App
+        working-directory: ./
+        run: npm run build
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+          cache: 'gradle'
+          cache-dependency-path: 'android/build.gradle'
+
+      - name: Sync Capacitor
+        working-directory: ./
+        run: npx cap sync android
+
+      - name: Setup Gradle Build Environment
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Upgrade & Re-generate Gradle Wrapper
+        run: |
+          gradle wrapper --gradle-version 8.9 --distribution-type all
+
+      - name: Grant Execute Permission to Gradle Wrapper
+        run: chmod +x gradlew
+
+      - name: Build APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
