@@ -1,0 +1,27 @@
+# Cover all Gradle and Android Studio files
+*.iml
+.gradle/
+local.properties
+.DS_Store
+Thumbs.db
+*.log
+
+# Ignore Android build directories recursively (handles both android/build and android/app/build)
+**/build/
+**/captures/
+.idea/
+
+# Ignore Capacitor-generated plugins directory
+**/capacitor-cordova-android-plugins/
+
+# CRITICAL: Ignore synced web asset folders. These are copies of the web dist/ build.
+# Checking these in slows down Git, causes conflicts, and exceeds file/blobs limits.
+**/src/main/assets/public/
+**/src/main/assets/capacitor.plugins.json
+
+# Whitelist Gradle wrapper jar and scripts
+!gradle/wrapper/gradle-wrapper.jar
+!gradlew
+!gradlew.bat
+
+
