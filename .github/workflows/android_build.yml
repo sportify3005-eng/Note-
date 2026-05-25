@@ -57,6 +57,18 @@ jobs:
         run: |
           gradle wrapper --gradle-version 8.9 --distribution-type all
 
+      - name: Configure android.useAndroidX in gradle.properties
+        run: |
+          if [ ! -f gradle.properties ]; then
+            echo "Creating gradle.properties..."
+            echo "android.useAndroidX=true" > gradle.properties
+            echo "android.enableJetifier=true" >> gradle.properties
+          else
+            echo "gradle.properties already exists. Appending properties if missing..."
+            grep -qxF 'android.useAndroidX=true' gradle.properties || echo 'android.useAndroidX=true' >> gradle.properties
+            grep -qxF 'android.enableJetifier=true' gradle.properties || echo 'android.enableJetifier=true' >> gradle.properties
+          fi
+
       - name: Grant Execute Permission to Gradle Wrapper
         run: chmod +x gradlew
 
