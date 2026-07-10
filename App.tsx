@@ -296,7 +296,7 @@ const FolderItem = ({ folder, currentFolderId, setCurrentFolderId, handleRenameF
                 )}
             </div>
             {!isEditing && (
-                <div className="flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex space-x-1">
                     <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="p-2 text-gray-500 hover:text-teal-600 dark:text-gray-400 dark:hover:text-teal-300"><Edit3 size={16} /></button>
                     <button 
                         onClick={(e) => { 
@@ -384,7 +384,7 @@ const NoteItem = React.memo(({ note, onEdit, onDelete, style }: any) => {
             
             <button 
                 onClick={(e) => { e.stopPropagation(); onDelete(note); }} 
-                className="absolute bottom-4 right-4 p-2 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full"
+                className="absolute bottom-4 right-4 p-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full transition-colors"
             >
                 <Trash2 size={18} />
             </button>
@@ -489,16 +489,6 @@ const NoteModal = ({ note, onClose, onSave, onDelete, folders }: any) => {
         }
     };
     
-    const handleFormatting = (char: string) => {
-        const textarea = contentRef.current;
-        if (!textarea) return;
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const text = content.substring(start, end);
-        const newText = content.substring(0, start) + char + text + char + content.substring(end);
-        setContent(newText);
-    };
-
     return (
         <div className="fixed inset-0 z-50 bg-white/50 dark:bg-black/50 backdrop-blur-sm flex items-center justify-center animate-modalUp">
             <div className="bg-white/95 dark:bg-gray-900/95 w-full h-full sm:rounded-none flex flex-col shadow-2xl backdrop-blur-xl">
@@ -515,9 +505,6 @@ const NoteModal = ({ note, onClose, onSave, onDelete, folders }: any) => {
                         <option value="all" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Unfiled</option>
                         {folders.map((f: Folder) => <option key={f.id} value={f.id} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">{f.name}</option>)}
                     </select>
-                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-                    <button onClick={() => handleFormatting('**')} className="text-gray-600 dark:text-gray-300 hover:text-teal-600"><Bold size={18} /></button>
-                    <button onClick={() => handleFormatting('__')} className="text-gray-600 dark:text-gray-300 hover:text-teal-600"><Underline size={18} /></button>
                     <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
                      <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"><option value="text-base" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Aa</option><option value="text-xl" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Aa+</option><option value="text-3xl" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">AA</option></select>
                      <select value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"><option value={FONT_COLORS[0].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">B/W</option><option value={FONT_COLORS[1].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Teal</option><option value={FONT_COLORS[2].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Pink</option><option value={FONT_COLORS[3].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Red</option></select>
@@ -764,7 +751,7 @@ const App = () => {
             </header>
             
             <div className={`transition-all duration-300 overflow-hidden ${isSearchVisible && currentView === 'notes' ? 'max-h-20 opacity-100' : 'max-h-0 opacity-0'}`}>
-                <div className="mx-4 mt-2 glass-card p-2 flex items-center">
+                <div className="mx-4 mt-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm rounded-2xl p-2 flex items-center">
                     <Search size={18} className="text-gray-400 ml-2" />
                     <input type="text" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} placeholder="Search notes..." className="bg-transparent w-full p-2 font-bold focus:outline-none text-gray-800 dark:text-white" />
                     {searchTerm && <button onClick={()=>setSearchTerm('')}><X size={18} className="text-gray-400 mr-2" /></button>}
