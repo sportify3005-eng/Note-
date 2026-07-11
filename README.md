@@ -1,20 +1,11 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Note Flow
 
-# Run and deploy your AI Studio app
+This is a note taking application.
 
-This contains everything you need to run your app locally.
+## Security Warning
+If you have ever hardcoded API keys or other secrets (such as Firebase credentials, Gemini API keys, Supabase keys, Stripe keys, etc.) during development, those values might still exist in your git history. 
 
-View your app in AI Studio: https://ai.studio/apps/6e7bcc6a-e0ef-4e2b-acb9-a3ff117bd16b
+**It is strongly recommended to immediately rotate any previously hardcoded secrets before deploying this application.**
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Environment Variables
+This project uses environment variables for sensitive data. Please copy `.env.example` to `.env` and fill in your values. Never commit the `.env` file to version control.

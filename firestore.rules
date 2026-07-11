@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default locked
+    match /{document=**} {
+      allow read, write: if false;
+    }
+    
+    // Allow users to read and write only their own notes
+    match /artifacts/{appId}/users/{userId}/notes/{noteId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow users to read and write only their own folders
+    match /artifacts/{appId}/users/{userId}/folders/{folderId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

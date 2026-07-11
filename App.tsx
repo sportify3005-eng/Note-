@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInAnonymously, Auth } from 'firebase/auth';
-import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, enableIndexedDbPersistence, Firestore } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, Firestore } from 'firebase/firestore';
+import { Preferences } from '@capacitor/preferences';
 import { Search, Bold, Underline, ChevronLeft, LogOut, Moon, Sun, Folder, Folders, Settings as SettingsIcon, Lightbulb, Zap, PenTool, X, Plus, Trash2, RotateCw, LayoutList, Edit3, Check, Smartphone, Home, FileText } from 'lucide-react';
 
 // --- Types ---
@@ -42,19 +43,10 @@ try {
       db = getFirestore(app);
       auth = getAuth(app);
       
-      // Enable offline persistence for better reliability
-      if (typeof window !== 'undefined') {
-          enableIndexedDbPersistence(db).catch((err) => {
-              if (err.code === 'failed-precondition') {
-                  console.warn("Persistence failed: Multiple tabs open");
-              } else if (err.code === 'unimplemented') {
-                  console.warn("Persistence failed: Browser not supported");
-              }
-          });
-      }
+      // Offline persistence is disabled to prevent IndexedDB errors on mobile WebView environments
   }
 } catch (error) {
-  console.error("Firebase initialization failed:", error);
+  // Firebase initialization failed
 }
 
 // --- Utility Functions ---
@@ -188,12 +180,13 @@ const WelcomeView = ({ userId, openEditModal }: { userId: string, openEditModal:
     );
 };
 
-const SettingsView = ({ onBack, userId, isDarkMode, setIsDarkMode }: any) => {
-    const handleReset = () => {
+const SettingsView = ({ onBack, userId, isDarkMode, setIsDarkMode, onDeleteAccount }: any) => {
+    const handleReset = async () => {
         if (window.confirm("Are you sure you want to clear ALL notes and data?")) {
-            localStorage.removeItem(`noteflow_notes_${userId}`);
-            localStorage.removeItem(`noteflow_folders_${userId}`);
-            localStorage.removeItem('noteflow_user_id');
+            if (onDeleteAccount) {
+                await onDeleteAccount();
+            }
+            
             window.location.reload();
         }
     };
@@ -544,46 +537,43 @@ const App = () => {
     const [currentFolderId, setCurrentFolderId] = useState<string>('all'); 
     const [searchTerm, setSearchTerm] = useState('');
     const [isSearchVisible, setIsSearchVisible] = useState(false);
+    const [dbError, setDbError] = useState(false);
 
     // Initial load of persistent userId
     useEffect(() => {
         const initializeUser = async () => {
-            // Priority 1: Check if we already have a userId in state/memory (already handled by useState)
-            
-            // Priority 2: Check localStorage
-            let stored = localStorage.getItem('noteflow_user_id');
-            
-            if (auth) {
-                // Priority 3: Use Firebase Auth for the most stable identity
-                const unsubscribe = onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        setUserId(user.uid);
-                        localStorage.setItem('noteflow_user_id', user.uid);
-                    } else {
-                        try {
-                            const cred = await signInAnonymously(auth);
-                            setUserId(cred.user.uid);
-                            localStorage.setItem('noteflow_user_id', cred.user.uid);
-                        } catch (e) {
-                            console.error("Anonymous sign-in failed", e);
-                            // Fallback to localStorage if auth fails
-                            if (!stored) {
-                                stored = crypto.randomUUID();
-                                localStorage.setItem('noteflow_user_id', stored);
-                            }
-                            setUserId(stored);
-                        }
-                    }
-                });
-                return () => unsubscribe();
-            } else {
-                // Fallback for no Firebase
+            let storedRes = await Preferences.get({ key: 'noteflow_user_id' });
+            let stored = storedRes.value;
+
+            if (!auth || !db) {
                 if (!stored) {
                     stored = crypto.randomUUID();
-                    localStorage.setItem('noteflow_user_id', stored);
+                    await Preferences.set({ key: 'noteflow_user_id', value: stored });
                 }
                 setUserId(stored);
+                setDbError(true);
+                return;
             }
+            const unsubscribe = onAuthStateChanged(auth, async (user) => {
+                if (user) {
+                    setUserId(user.uid);
+                    await Preferences.set({ key: 'noteflow_user_id', value: user.uid });
+                } else {
+                    try {
+                        const cred = await signInAnonymously(auth);
+                        setUserId(cred.user.uid);
+                        await Preferences.set({ key: 'noteflow_user_id', value: cred.user.uid });
+                    } catch (e) {
+                        if (!stored) {
+                            stored = crypto.randomUUID();
+                            await Preferences.set({ key: 'noteflow_user_id', value: stored });
+                        }
+                        setUserId(stored);
+                        setDbError(true);
+                    }
+                }
+            });
+            return () => unsubscribe();
         };
 
         initializeUser();
@@ -596,125 +586,164 @@ const App = () => {
     }, [isDarkMode]);
 
     // Data Management
-    const loadLocalData = useCallback((uid: string) => {
-        const localNotes = localStorage.getItem(`noteflow_notes_${uid}`);
-        const localFolders = localStorage.getItem(`noteflow_folders_${uid}`);
-        
-        if (localNotes) {
-            setNotes(JSON.parse(localNotes));
-        } else {
-            setNotes([]);
-        }
-        
-        if (localFolders) {
-            setFolders(JSON.parse(localFolders));
-        } else {
-            setFolders([{ id: 'work', name: 'Work', createdAt: new Date().toISOString() }, { id: 'personal', name: 'Personal', createdAt: new Date().toISOString() }]);
-        }
-        
-        setIsLoading(false);
-    }, []);
 
     useEffect(() => {
-        if (userId) {
-            if (db) {
-                const unsubNotes = onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/notes`), s => {
-                    setNotes(s.docs.map(d => ({ id: d.id, ...d.data() } as Note)));
-                    setIsLoading(false);
-                });
-                const unsubFolders = onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/folders`), s => {
-                    if(!s.empty) setFolders(s.docs.map(d => ({ id: d.id, ...d.data() } as Folder)));
-                });
-                return () => { unsubNotes(); unsubFolders(); };
-            } else {
-                loadLocalData(userId);
-            }
+        if (userId && db && !dbError) {
+            const unsubNotes = onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/notes`), s => {
+                const updatedNotes = s.docs.map(d => ({ id: d.id, ...d.data() } as Note));
+                setNotes(updatedNotes);
+                Preferences.set({ key: `noteflow_notes_${userId}`, value: JSON.stringify(updatedNotes) });
+                setIsLoading(false);
+            }, (error) => {
+                console.error("Notes fetch error:", error);
+                setDbError(true);
+            });
+            const unsubFolders = onSnapshot(collection(db, `/artifacts/${appId}/users/${userId}/folders`), s => {
+                if(!s.empty) {
+                    const updatedFolders = s.docs.map(d => ({ id: d.id, ...d.data() } as Folder));
+                    setFolders(updatedFolders);
+                    Preferences.set({ key: `noteflow_folders_${userId}`, value: JSON.stringify(updatedFolders) });
+                }
+            }, (error) => {
+                console.error("Folders fetch error:", error);
+                setDbError(true);
+            });
+            return () => { unsubNotes(); unsubFolders(); };
         }
-    }, [userId, loadLocalData]);
+    }, [userId, dbError]);
 
     const handleSaveNote = async (d: Partial<Note>): Promise<string | undefined> => { 
         if(!userId) return; 
-        if(db) {
-            const p = { ...d, updatedAt: serverTimestamp() }; 
-            if(d.id) {
-                await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/notes`, d.id), p); 
-                return d.id;
-            } else {
-                const docRef = await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/notes`), {...p, createdAt: serverTimestamp()}); 
-                return docRef.id;
-            }
-        } else {
-            const now = new Date().toISOString();
-            const idToReturn = d.id || crypto.randomUUID();
-            
-            setNotes(prev => {
-                let updated;
-                const exists = prev.some(n => n.id === idToReturn);
-                if(exists) {
-                    updated = prev.map(n => n.id === idToReturn ? { ...n, ...d, updatedAt: now } : n);
+        
+        if (db && !dbError) {
+            try {
+                const p = { ...d, updatedAt: serverTimestamp() }; 
+                if(d.id) {
+                    await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/notes`, d.id), p); 
+                    return d.id;
                 } else {
-                    const newNote = { ...d, id: idToReturn, createdAt: now, updatedAt: now } as Note;
-                    updated = [...prev, newNote];
+                    const docRef = await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/notes`), {...p, createdAt: serverTimestamp()}); 
+                    return docRef.id;
                 }
-                localStorage.setItem(`noteflow_notes_${userId}`, JSON.stringify(updated));
-                return updated;
-            });
-            return idToReturn;
+            } catch(e) {
+                console.error("Firebase save failed, falling back to local storage", e);
+                setDbError(true);
+            }
         }
+        
+        // Offline / Local save
+        const now = new Date().toISOString();
+        const idToReturn = d.id || crypto.randomUUID();
+        
+        setNotes(prev => {
+            let updated;
+            const exists = prev.some(n => n.id === idToReturn);
+            if(exists) {
+                updated = prev.map(n => n.id === idToReturn ? { ...n, ...d, updatedAt: now } : n);
+            } else {
+                const newNote = { ...d, id: idToReturn, createdAt: now, updatedAt: now } as Note;
+                updated = [...prev, newNote];
+            }
+            Preferences.set({ key: `noteflow_notes_${userId}`, value: JSON.stringify(updated) });
+            return updated;
+        });
+        return idToReturn;
     };
 
     const handleDeleteNote = async (n: Note) => { 
         if(!userId) return; 
-        if(db) {
-            await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/notes`, n.id)); 
-        } else {
-            setNotes(prev => {
-                const updated = prev.filter(note => note.id !== n.id);
-                localStorage.setItem(`noteflow_notes_${userId}`, JSON.stringify(updated));
-                return updated;
-            });
+        if (db && !dbError) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/notes`, n.id)); 
+            } catch(e) {
+                console.error("Firebase delete failed, falling back to local storage", e);
+                setDbError(true);
+            }
         }
+        
+        // Offline / Local delete
+        setNotes(prev => {
+            const updated = prev.filter(note => note.id !== n.id);
+            Preferences.set({ key: `noteflow_notes_${userId}`, value: JSON.stringify(updated) });
+            return updated;
+        });
     };
 
     const handleCreateFolder = async (name: string) => { 
         if(!userId) return; 
-        if(db) {
-             await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/folders`), { name, createdAt: serverTimestamp() }); 
-        } else {
-            const newFolder = { id: crypto.randomUUID(), name, createdAt: new Date().toISOString() };
-            setFolders(prev => {
-                const updated = [...prev, newFolder];
-                localStorage.setItem(`noteflow_folders_${userId}`, JSON.stringify(updated));
-                return updated;
-            });
+        if (db && !dbError) {
+            try {
+                await addDoc(collection(db, `/artifacts/${appId}/users/${userId}/folders`), { name, createdAt: serverTimestamp() });
+                return;
+            } catch(e) {
+                console.error("Firebase create folder failed", e);
+                setDbError(true);
+            }
         }
+        
+        // Offline / Local create
+        setFolders(prev => {
+            const updated = [...prev, { id: crypto.randomUUID(), name, createdAt: new Date().toISOString() }];
+            Preferences.set({ key: `noteflow_folders_${userId}`, value: JSON.stringify(updated) });
+            return updated;
+        });
     };
 
     const handleRenameFolder = async (id: string, name: string) => { 
         if(!userId) return; 
-        if(db) {
-            await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/folders`, id), { name }); 
-        } else {
-            setFolders(prev => {
-                const updated = prev.map(f => f.id === id ? {...f, name} : f);
-                localStorage.setItem(`noteflow_folders_${userId}`, JSON.stringify(updated));
-                return updated;
-            });
+        if (db && !dbError) {
+            try {
+                await updateDoc(doc(db, `/artifacts/${appId}/users/${userId}/folders`, id), { name }); 
+                return;
+            } catch(e) {
+                console.error("Firebase rename folder failed", e);
+                setDbError(true);
+            }
         }
+        
+        // Offline / Local rename
+        setFolders(prev => {
+            const updated = prev.map(f => f.id === id ? { ...f, name } : f);
+            Preferences.set({ key: `noteflow_folders_${userId}`, value: JSON.stringify(updated) });
+            return updated;
+        });
     };
 
     const handleDeleteFolder = async (f: Folder) => { 
         if(!userId) return; 
-        if(db) {
-            await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/folders`, f.id)); 
-        } else {
-            setFolders(prev => {
-                const updated = prev.filter(folder => folder.id !== f.id);
-                localStorage.setItem(`noteflow_folders_${userId}`, JSON.stringify(updated));
-                return updated;
-            });
+        if (db && !dbError) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/folders`, f.id)); 
+                if(currentFolderId===f.id) setCurrentFolderId('all'); 
+                return;
+            } catch(e) {
+                console.error("Firebase delete folder failed", e);
+                setDbError(true);
+            }
         }
-        if(currentFolderId===f.id) setCurrentFolderId('all'); 
+        
+        // Offline / Local delete
+        setFolders(prev => {
+            const updated = prev.filter(folder => folder.id !== f.id);
+            Preferences.set({ key: `noteflow_folders_${userId}`, value: JSON.stringify(updated) });
+            return updated;
+        });
+        if(currentFolderId===f.id) setCurrentFolderId('all');
+    };
+
+    
+    const handleDeleteAccount = async () => {
+        if (!userId) return;
+        if (db) {
+            for (const note of notes) {
+                await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/notes`, note.id)).catch(() => {});
+            }
+            for (const folder of folders) {
+                await deleteDoc(doc(db, `/artifacts/${appId}/users/${userId}/folders`, folder.id)).catch(() => {});
+            }
+        }
+        setNotes([]);
+        setFolders([]);
     };
 
     const filteredNotes = useMemo(() => {
@@ -735,6 +764,34 @@ const App = () => {
     const openNewNoteModal = () => {
         setEditingNote({ folderId: currentFolderId === 'all' ? 'all' : currentFolderId });
     };
+
+    
+    
+    const loadLocalData = useCallback(async (uid: string) => {
+        const localNotesRes = await Preferences.get({ key: `noteflow_notes_${uid}` });
+        const localFoldersRes = await Preferences.get({ key: `noteflow_folders_${uid}` });
+        
+        if (localNotesRes.value) {
+            setNotes(JSON.parse(localNotesRes.value));
+        } else {
+            setNotes([]);
+        }
+        
+        if (localFoldersRes.value) {
+            setFolders(JSON.parse(localFoldersRes.value));
+        } else {
+            setFolders([{ id: 'work', name: 'Work', createdAt: new Date().toISOString() }, { id: 'personal', name: 'Personal', createdAt: new Date().toISOString() }]);
+        }
+        setIsLoading(false);
+    }, []);
+
+    useEffect(() => {
+        if (userId) {
+            if (dbError) {
+                loadLocalData(userId);
+            }
+        }
+    }, [userId, dbError, loadLocalData]);
 
     return (
         <div className="min-h-screen flex flex-col transition-colors duration-500 overflow-x-hidden">
@@ -760,7 +817,7 @@ const App = () => {
 
             <main className="flex-grow pt-4">
                 {currentView === 'home' ? <WelcomeView userId={userId || ''} openEditModal={openNewNoteModal} /> :
-                 currentView === 'settings' ? <SettingsView onBack={() => setCurrentView('notes')} userId={userId} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} /> :
+                 currentView === 'settings' ? <SettingsView onBack={() => setCurrentView('notes')} userId={userId} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} onDeleteAccount={handleDeleteAccount} /> :
                  currentView === 'folders' ? <FoldersView folders={folders} currentFolderId={currentFolderId} setCurrentFolderId={(id: string) => { setCurrentFolderId(id); setCurrentView('notes'); }} handleCreateFolder={handleCreateFolder} handleRenameFolder={handleRenameFolder} handleDeleteFolder={handleDeleteFolder} setTempMessage={()=>{}} /> :
                  <NoteList notes={filteredNotes} isLoading={isLoading} userId={userId} onEdit={setEditingNote} onDelete={handleDeleteNote} folders={folders} currentFolderId={currentFolderId} isSearchActive={isSearchVisible && !!searchTerm} searchTerm={searchTerm} openEditModal={openNewNoteModal} />}
             </main>
