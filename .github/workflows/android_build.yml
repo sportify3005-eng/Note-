@@ -32,6 +32,10 @@ jobs:
         working-directory: ./
         run: npm ci
 
+      - name: Generate App Icons
+        working-directory: ./
+        run: npm run generate-icons
+
       - name: Build Web App
         working-directory: ./
         run: npm run build
