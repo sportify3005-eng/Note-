@@ -433,6 +433,43 @@ const NoteList = ({ notes, isLoading, userId, onEdit, onDelete, folders, current
 const FONT_SIZES = [{ label: 'Normal', value: 'text-base' }, { label: 'Large', value: 'text-xl' }, { label: 'Huge', value: 'text-3xl' }];
 const FONT_COLORS = [{ label: 'Standard', value: 'text-gray-900 dark:text-white' }, { label: 'Ocean', value: 'text-teal-600 dark:text-teal-400' }, { label: 'Berry', value: 'text-pink-600 dark:text-pink-400' }, { label: 'Alert', value: 'text-red-600 dark:text-red-400' }];
 
+const CustomSelect = ({ value, onChange, options }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectedOption = options.find((o: any) => o.value === value) || options[0];
+
+    return (
+        <div className="relative">
+            <button 
+                type="button"
+                onClick={() => setIsOpen(!isOpen)} 
+                className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer flex items-center space-x-1"
+            >
+                <span>{selectedOption.label}</span>
+            </button>
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
+                    <div className="absolute top-full mt-2 left-0 bg-white dark:bg-gray-800 shadow-xl rounded-lg py-1 z-50 min-w-[120px] border border-gray-100 dark:border-gray-700">
+                        {options.map((opt: any) => (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                className={`w-full text-left px-4 py-2 text-sm ${value === opt.value ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 font-bold' : 'text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                                onClick={() => {
+                                    onChange(opt.value);
+                                    setIsOpen(false);
+                                }}
+                            >
+                                {opt.label}
+                            </button>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
 const NoteModal = ({ note, onClose, onSave, onDelete, folders }: any) => {
     const initialFolder = note?.folderId || 'all';
 
@@ -493,14 +530,23 @@ const NoteModal = ({ note, onClose, onSave, onDelete, folders }: any) => {
                     </div>
                 </div>
 
-                <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-center space-x-4 overflow-x-auto">
-                   <select value={folderId} onChange={(e) => setFolderId(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer">
-                        <option value="all" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Unfiled</option>
-                        {folders.map((f: Folder) => <option key={f.id} value={f.id} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">{f.name}</option>)}
-                    </select>
-                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-                     <select value={fontSize} onChange={(e) => setFontSize(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"><option value="text-base" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Aa</option><option value="text-xl" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Aa+</option><option value="text-3xl" className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">AA</option></select>
-                     <select value={fontColor} onChange={(e) => setFontColor(e.target.value)} className="bg-transparent text-sm font-bold text-gray-700 dark:text-gray-200 focus:outline-none cursor-pointer"><option value={FONT_COLORS[0].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">B/W</option><option value={FONT_COLORS[1].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Teal</option><option value={FONT_COLORS[2].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Pink</option><option value={FONT_COLORS[3].value} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white">Red</option></select>
+                <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 flex items-center space-x-4 overflow-x-visible relative">
+                    <CustomSelect 
+                        value={folderId} 
+                        onChange={setFolderId} 
+                        options={[{label: 'Unfiled', value: 'all'}, ...folders.map((f: Folder) => ({label: f.name, value: f.id}))]} 
+                    />
+                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 shrink-0"></div>
+                    <CustomSelect 
+                        value={fontSize} 
+                        onChange={setFontSize} 
+                        options={[{label: 'Aa', value: 'text-base'}, {label: 'Aa+', value: 'text-xl'}, {label: 'AA', value: 'text-3xl'}]} 
+                    />
+                    <CustomSelect 
+                        value={fontColor} 
+                        onChange={setFontColor} 
+                        options={[{label: 'B/W', value: FONT_COLORS[0].value}, {label: 'Teal', value: FONT_COLORS[1].value}, {label: 'Pink', value: FONT_COLORS[2].value}, {label: 'Red', value: FONT_COLORS[3].value}]} 
+                    />
                 </div>
 
                 <div className="flex-grow flex flex-col p-6 overflow-y-auto">
