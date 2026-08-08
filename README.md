@@ -6,7 +6,6 @@ This is a modern, responsive note taking application built to help you capture i
 
 - **Notes Management**: Create, view, edit, and delete notes.
 - **Folder Organization**: Categorize notes efficiently with custom folders.
-- **Rich Text Interface**: Enhance notes with bold, italics, and underlining.
 - **Dark/Light Mode**: User preference based theme toggling.
 - **Cross-Platform**: Built for Web, iOS, and Android support via Capacitor.
 - **Cloud Syncing**: Data synchronization using Firebase Firestore.
